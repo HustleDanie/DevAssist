@@ -1,0 +1,17 @@
+# MCP Server Docker Image
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install the MCP server component
+COPY src/devassist/mcp/ /app/mcp/
+COPY pyproject.toml .
+
+RUN pip install --no-cache-dir httpx pydantic pydantic-settings
+
+# Copy startup script
+COPY docker/scripts/start-mcp.py /app/start-mcp.py
+
+EXPOSE 3000
+
+CMD ["python", "/app/start-mcp.py"]

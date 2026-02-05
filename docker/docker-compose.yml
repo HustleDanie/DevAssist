@@ -1,0 +1,113 @@
+# DevAssist Docker Compose Configuration
+# Use for local development and testing
+
+services:
+  # FastAPI Backend API
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.api
+    container_name: devassist-api
+    ports:
+      - "8000:8000"
+    environment:
+      - DEVASSIST_OPENAI_API_KEY=${DEVASSIST_OPENAI_API_KEY}
+      - DEVASSIST_GITHUB_TOKEN=${DEVASSIST_GITHUB_TOKEN}
+      - DEVASSIST_MCP_ENABLED=${DEVASSIST_MCP_ENABLED:-false}
+      - DEVASSIST_MCP_SERVER_URL=http://mcp-server:3000
+    volumes:
+      - devassist-work:/app/.devassist_work
+      - api-temp:/tmp/devassist
+    depends_on:
+      - mcp-server
+    networks:
+      - devassist-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Next.js Frontend
+  frontend:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: devassist-frontend
+    ports:
+      - "3001:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://api:8000
+    depends_on:
+      - api
+    networks:
+      - devassist-network
+
+  # CLI tool container
+  devassist:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: devassist
+    environment:
+      - DEVASSIST_OPENAI_API_KEY=${DEVASSIST_OPENAI_API_KEY}
+      - DEVASSIST_GITHUB_TOKEN=${DEVASSIST_GITHUB_TOKEN}
+      - DEVASSIST_MCP_ENABLED=${DEVASSIST_MCP_ENABLED:-false}
+      - DEVASSIST_MCP_SERVER_URL=http://mcp-server:3000
+      - DEVASSIST_DOCKER_ENABLED=false  # Disable nested Docker
+    volumes:
+      - devassist-work:/app/.devassist_work
+      - ./repos:/app/repos:rw  # Mount for cloned repositories
+    depends_on:
+      - mcp-server
+    networks:
+      - devassist-network
+    profiles:
+      - cli
+
+  mcp-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.mcp
+    container_name: devassist-mcp
+    ports:
+      - "3000:3000"
+    environment:
+      - MCP_PORT=3000
+    volumes:
+      - ./docs:/app/docs:ro  # Mount documentation
+    networks:
+      - devassist-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Testing environment for running migration tests
+  test-runner:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.test
+    container_name: devassist-tests
+    environment:
+      - PYTEST_ARGS=${PYTEST_ARGS:--v}
+    volumes:
+      - ../tests:/app/tests:ro
+      - test-results:/app/results
+    networks:
+      - devassist-network
+    profiles:
+      - testing
+
+volumes:
+  devassist-work:
+    driver: local
+  test-results:
+    driver: local
+  api-temp:
+    driver: local
+
+networks:
+  devassist-network:
+    driver: bridge
